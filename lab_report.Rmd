@@ -1,0 +1,132 @@
+---
+title: "Mathematics and R Laboratory -- Exercise Dataset Report"
+author: "Alessio Giannotta"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(ggplot2)
+```
+
+## Purpose
+
+This report demonstrates the type of R / R Markdown pipeline I build and
+maintain for the Mathematics and R Laboratory course I teach: it reads a
+raw exercise dataset, checks and cleans it, computes descriptive
+statistics, and produces visualisations, all compiled automatically into a
+single reproducible document.
+
+The dataset used here is **synthetic** (see `generate_data.R`): no real
+student data is included in this repository.
+
+## 1. Reading the raw data
+
+```{r read-data}
+raw <- read.csv("data/lab_exercise_data.csv", stringsAsFactors = FALSE)
+str(raw)
+```
+
+## 2. Data quality checks and cleaning
+
+Before any analysis, I check for missing values and implausible entries
+(e.g. scores outside the valid 0-30 range), which routinely occur in raw
+exercise/exam datasets.
+
+```{r quality-checks}
+missing_summary <- colSums(is.na(raw))
+missing_summary
+
+out_of_range <- raw %>%
+  filter(written_score < 0 | written_score > 30 | is.na(written_score))
+out_of_range
+```
+
+```{r cleaning}
+clean <- raw %>%
+  filter(!is.na(attendance_pct)) %>%
+  mutate(
+    written_score = ifelse(written_score < 0 | written_score > 30,
+                            NA, written_score)
+  ) %>%
+  filter(!is.na(written_score))
+
+cat("Rows before cleaning:", nrow(raw), "\n")
+cat("Rows after cleaning: ", nrow(clean), "\n")
+```
+
+## 3. Aggregation
+
+Cross-checking written and lab scores by cohort, similar to how grades are
+aggregated and cross-checked across written and lab-based assessments for
+the examination committee.
+
+```{r aggregation}
+summary_by_cohort <- clean %>%
+  group_by(cohort) %>%
+  summarise(
+    n              = n(),
+    mean_written   = round(mean(written_score), 2),
+    mean_lab       = round(mean(lab_score), 2),
+    sd_written     = round(sd(written_score), 2),
+    median_written = median(written_score)
+  )
+
+summary_by_cohort
+```
+
+## 4. Descriptive statistics
+
+```{r descriptives}
+summary(clean[, c("hours_studied", "attendance_pct",
+                   "written_score", "lab_score")])
+```
+
+## 5. Visualisation
+
+```{r plot-histogram, fig.width=6, fig.height=4}
+ggplot(clean, aes(x = written_score)) +
+  geom_histogram(binwidth = 2, fill = "#4C72B0", color = "white") +
+  labs(title = "Distribution of Written Exam Scores",
+       x = "Score", y = "Count") +
+  theme_minimal()
+```
+
+```{r plot-boxplot, fig.width=6, fig.height=4}
+ggplot(clean, aes(x = cohort, y = lab_score, fill = cohort)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Lab Scores by Cohort",
+       x = "Cohort", y = "Lab score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r plot-scatter, fig.width=6, fig.height=4}
+ggplot(clean, aes(x = hours_studied, y = written_score)) +
+  geom_point(alpha = 0.6, color = "#4C72B0") +
+  geom_smooth(method = "lm", se = FALSE, color = "darkred") +
+  labs(title = "Hours Studied vs Written Score",
+       x = "Hours studied", y = "Written score") +
+  theme_minimal()
+```
+
+## 6. A simple regression check
+
+As a further illustration of the statistical-computing exercises used in
+the lab, a simple linear model relating hours studied to written score:
+
+```{r regression}
+model <- lm(written_score ~ hours_studied + attendance_pct, data = clean)
+summary(model)
+```
+
+## Notes
+
+This document is knit directly from the underlying CSV: updating
+`data/lab_exercise_data.csv` (or re-running `generate_data.R`) and
+re-knitting reproduces the full report -- the same reproducible workflow
+used for the lab sessions.
